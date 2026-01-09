@@ -1,18 +1,29 @@
-from mcp import Server, Tool
+from mcp.server import FastMCP
 from schemas.lead import CreateLeadPayload
-from schemas.errors import MCPError, MCPSuccess
+from schemas.responses import MCPError, MCPSuccess
 from utils.audit import audit_log
 from config import MCP_SERVER_NAME
 from router import PROVIDERS
+from pydantic import BaseModel
+from typing import Optional
 import uuid
 
 
-server = Server(MCP_SERVER_NAME)
+class CreateLeadInput(BaseModel):
+    provider: str
+    payload: CreateLeadPayload
+    request_id: Optional[str] = None
 
 
-async def create_lead(provider: str, payload: dict, request_id: str = None):
+server = FastMCP(MCP_SERVER_NAME)
 
-    request_id = request_id or str(uuid.uuid4())
+
+@server.tool()
+async def create_lead(input: CreateLeadInput):
+
+    provider = input.provider
+    payload = input.payload.dict()
+    request_id = input.request_id or str(uuid.uuid4())
 
     audit_log({
         "event": "request_received",
@@ -29,16 +40,7 @@ async def create_lead(provider: str, payload: dict, request_id: str = None):
             request_id=request_id
         ).dict()
 
-    # Validate payload schema
-    try:
-        CreateLeadPayload(**payload)
-    except Exception as e:
-        return MCPError(
-            code="VALIDATION_ERROR",
-            message=str(e),
-            provider=provider,
-            request_id=request_id
-        ).dict()
+    # Payload already validated by Pydantic
 
     provider_client = PROVIDERS[provider]
 
@@ -66,24 +68,6 @@ async def create_lead(provider: str, payload: dict, request_id: str = None):
         request_id=request_id,
         details=res
     ).dict()
-
-
-server.add_tool(
-    Tool(
-        name="create_lead",
-        description="Create a CRM lead in Zoho or Salesforce",
-        input_schema={
-            "type": "object",
-            "properties": {
-                "provider": {"type": "string"},
-                "payload": {"type": "object"},
-                "request_id": {"type": "string"}
-            },
-            "required": ["provider", "payload"]
-        },
-        func=create_lead
-    )
-)
 
 
 if __name__ == "__main__":

@@ -3,3 +3,4 @@ requests
 pydantic
 FastAPI
 uvicorn
+email-validator
